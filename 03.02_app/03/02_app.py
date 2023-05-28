@@ -2,7 +2,7 @@
 
 # %% auto 0
 __all__ = ['n_samples', 'loan_amount', 'term', 'interest_rate', 'income', 'credit_score', 'x', 'y', 'model', 'lr', 'optimizer',
-           'epochs', 'SimpleNet', 'mse']
+           'epochs', 'loss_fn', 'SimpleNet', 'mse']
 
 # %% ../../03.02_gpt_teach_nn.ipynb 7
 import torch
@@ -20,10 +20,10 @@ credit_score = torch.normal(600, 50, size=(n_samples,))  # average credit score 
 x = torch.column_stack([loan_amount, term, interest_rate, income, credit_score]).float()
 y = torch.distributions.categorical.Categorical(torch.tensor([0.9, 0.1])).sample((n_samples,)).float()
 
-# %% ../../03.02_gpt_teach_nn.ipynb 17
-y = y[:, None]
+# %% ../../03.02_gpt_teach_nn.ipynb 21
+y = y[:, None];
 
-# %% ../../03.02_gpt_teach_nn.ipynb 22
+# %% ../../03.02_gpt_teach_nn.ipynb 27
 import torch.nn.functional as F
 
 class SimpleNet(torch.nn.Module):
@@ -39,28 +39,30 @@ class SimpleNet(torch.nn.Module):
         output = torch.sigmoid(x)
         return output
 
-# %% ../../03.02_gpt_teach_nn.ipynb 23
+# %% ../../03.02_gpt_teach_nn.ipynb 28
 model = SimpleNet()
 
-# %% ../../03.02_gpt_teach_nn.ipynb 25
+# %% ../../03.02_gpt_teach_nn.ipynb 31
 def mse(output, target):
     return (output - target).pow(2).mean()
 
-# %% ../../03.02_gpt_teach_nn.ipynb 27
+# %% ../../03.02_gpt_teach_nn.ipynb 33
 lr = 1e-2
 
-# %% ../../03.02_gpt_teach_nn.ipynb 28
+# %% ../../03.02_gpt_teach_nn.ipynb 34
 optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-# %% ../../03.02_gpt_teach_nn.ipynb 30
+# %% ../../03.02_gpt_teach_nn.ipynb 38
 from tqdm import tqdm
 
-epochs = 100
+epochs = 20
+loss_fn = torch.nn.BCELoss()
 
 for epoch in tqdm(range(epochs)):
     preds = model(x)
-    loss = mse(preds, y)
-    print(f"Epoch: {epoch}, Loss: {loss}", flush=True)
+    loss = loss_fn(preds, y)
+    print(f"Epoch: {epoch}, Loss: {loss}")
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()
+    
