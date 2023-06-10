@@ -2,7 +2,8 @@
 
 # %% auto 0
 __all__ = ['path_data', 'path_gz', 'x_train', 'y_train', 'x_valid', 'y_valid', 'n', 'm', 'c', 'nh', 'w1', 'b1', 'w2', 'b2', 'res',
-           'lin', 'relu', 'model']
+           'preds', 'model', 'loss', 'lin', 'relu', 'mse', 'lin_grad', 'forward_and_backward', 'Relu', 'Lin', 'Mse',
+           'Model']
 
 # %% ../../03.01_backpropagation_rebuild.ipynb 1
 import pickle,gzip,math,os,time,shutil,torch,matplotlib as mpl, numpy as np
@@ -41,20 +42,118 @@ b1 = torch.zeros(nh)
 w2 = torch.randn(nh,1)
 b2 = torch.zeros(1)
 
-# %% ../../03.01_backpropagation_rebuild.ipynb 16
-def lin(x, w, b): 
+# %% ../../03.01_backpropagation_rebuild.ipynb 18
+def lin(x, w, b):
     return x@w + b
 
-# %% ../../03.01_backpropagation_rebuild.ipynb 21
+# %% ../../03.01_backpropagation_rebuild.ipynb 23
 def relu(x):
     return x.clamp_min(0.)
 
-# %% ../../03.01_backpropagation_rebuild.ipynb 24
+# %% ../../03.01_backpropagation_rebuild.ipynb 28
 def model(xb):
     l1 = lin(xb, w1, b1)
     l2 = relu(l1)
     return lin(l2, w2, b2)
 
-# %% ../../03.01_backpropagation_rebuild.ipynb 26
+# %% ../../03.01_backpropagation_rebuild.ipynb 31
 res = model(x_valid)
-res.shape
+res
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 41
+y_train, y_valid = y_train.float(), y_valid.float()
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 43
+preds = model(x_train)
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 46
+def mse(output, target):
+    return (output[:,0] - target).pow(2).mean()
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 61
+def lin_grad(inp, out, w, b):
+    # grad of matmul with respect to input
+    inp.g = out.g @ w.t()
+    w.g = (inp.unsqueeze(-1) * out.g.unsqueeze(1)).sum(0)
+    b.g = out.g.sum(0)
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 62
+def forward_and_backward(inp, targ):
+    # forward pass
+    l1 = lin(inp, w1, b1)
+    l2 = relu(l1)
+    out = lin(l2, w2, b2)
+    diff = out[:,0] - targ
+    loss = diff.pow(2).mean()
+
+    # backward pass
+    out.g = 2. * diff[:, None] / inp.shape[0]
+    lin_grad(l2, out, w2, b2)
+    l1.g = (l1>0).float() * l2.g
+    lin_grad(inp, l1, w1, b1)   
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 63
+forward_and_backward(x_train, y_train)
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 74
+class Relu():
+    # create a call function that takes and inp and returns an out that clamps at 0
+    def __call__(self, inp):
+        self.inp = inp
+        self.out = inp.clamp_min(0)
+        return self.out
+    
+    # create a backward function that takes inp.g and returns a boolean float and multiply it by the out.g to flatten negatives
+    def backward(self):
+        self.inp.g = (self.inp > 0).float() * self.out.g
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 75
+class Lin():
+    # intialize parameters weights and biases, w and b
+    def __init__(self, w, b):
+        self.w = w
+        self.b = b
+    # create a call function that takes and input, and runs input with weights and biases through a linear layer function
+    def __call__(self, inp):
+        self.inp = inp
+        self.out = lin(inp, self.w, self.b)
+        return self.out
+    # create a backward function that gets the dot product of the output
+    def backward(self):
+        self.inp.g = self.out.g @ self.w.t()
+        self.w.g = self.inp.t() @ self.out.g
+        self.b.g = self.out.g.sum()
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 76
+class Mse():
+    def __call__(self, inp, targ):
+        self.inp = inp
+        self.targ = targ
+        self.out = mse(inp, targ)
+        return self.out
+    
+    def backward(self):
+        self.inp.g = 2. * (self.inp.squeeze() - self.targ).unsqueeze(-1) / self.targ.shape[0]
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 77
+class Model():
+    def __init__(self, w1, b1, w2, b2):
+        self.layers = [Lin(w1,b1), Relu(), Lin(w2,b2)]
+        self.loss = Mse()
+        
+    def __call__(self, x, targ):
+        for l in self.layers: x = l(x)
+        return self.loss(x, targ)
+    
+    def backward(self):
+        self.loss.backward()
+        for l in reversed(self.layers): l.backward()
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 78
+model = Model(w1, b1, w2, b2)
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 79
+loss = model(x_train, y_train)
+
+# %% ../../03.01_backpropagation_rebuild.ipynb 80
+model.backward()
